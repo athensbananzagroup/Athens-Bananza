@@ -1,4 +1,4 @@
-from notion_client import notion_post
+from notion_api import notion_post
 
 # DATABASE LOOKUPS
 
