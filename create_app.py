@@ -29,7 +29,12 @@ def notion_post(path: str, payload: dict) -> dict:
         return client.pages.create(**payload)
     elif "/query" in path:
         db_id = path.split("/databases/")[-1].split("/query")[0]
-        return client.databases.query(database_id=db_id, **payload)
+        return client.databases.query(
+            database_id=db_id,
+            filter=payload.get("filter"),
+            page_size=payload.get("page_size", 100),
+            start_cursor=payload.get("start_cursor"),
+        )
     return {}
 
 
