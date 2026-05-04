@@ -5,9 +5,15 @@ from dotenv import load_dotenv
 from notion_client import Client
 
 
-load_dotenv()
+# load_dotenv()
 
-NOTION_TOKEN = os.getenv("NOTION_TOKEN")
+# NOTION_TOKEN = os.getenv("NOTION_TOKEN")
+
+NOTION_TOKEN = st.secrets.get("NOTION_TOKEN") or os.getenv("NOTION_TOKEN")
+
+if not NOTION_TOKEN:
+    st.error("NOTION_TOKEN is missing. Add it in Streamlit Cloud secrets.")
+    st.stop()
 
 if not NOTION_TOKEN:
     st.error("NOTION_TOKEN not found. Check your .env file.")
