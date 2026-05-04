@@ -1,40 +1,50 @@
 import os
 import re
+import time
 from datetime import datetime, timedelta
 
+import requests
 import streamlit as st
-from notion_client import Client
 
-# --- Auth ---
+# --- Auth & Config ---
 NOTION_TOKEN = st.secrets.get("NOTION_TOKEN") or os.getenv("NOTION_TOKEN")
 if not NOTION_TOKEN:
     st.error("NOTION_TOKEN is missing. Add it in Streamlit Cloud secrets.")
     st.stop()
 
-client = Client(auth=NOTION_TOKEN)
+MONDAY_CHECK_DB_ID = "31bcc2a6c00c80d49256cf371e364a26"
+PROJECT_DB_ID = "30acc2a6c00c817291bfd97875cad3e9"
 
-MONDAY_CHECK_DB_ID = "31bcc2a6c00c80958f52000bc92cde8c"
-PROJECTS_DB_ID = "30acc2a6c00c81179587000b85dd79c0"
+BASE_URL = "https://api.notion.com/v1"
+HEADERS = {
+    "Authorization": f"Bearer {NOTION_TOKEN}",
+    "Content-Type": "application/json",
+    "Notion-Version": "2022-06-28",
+}
+
 
 # ----------------------------
-# Notion helpers
+# Notion helpers (raw requests)
 # ----------------------------
 
-def notion_get(page_id: str) -> dict:
-    return client.pages.retrieve(page_id=page_id)
+def notion_get(endpoint: str) -> dict | None:
+    response = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS)
+    if response.status_code in [200, 201]:
+        return response.json()
+    st.error(f"GET ERROR {response.status_code}: {response.text}")
+    return None
 
 
-def notion_query(data_source_id: str, filter: dict = None, page_size: int = 100, start_cursor: str = None) -> dict:
-    kwargs = dict(data_source_id=data_source_id, page_size=page_size)
-    if filter:
-        kwargs["filter"] = filter
-    if start_cursor:
-        kwargs["start_cursor"] = start_cursor
-    return client.data_sources.query(**kwargs)
-
-
-def notion_create(payload: dict) -> dict:
-    return client.pages.create(**payload)
+def notion_post(endpoint: str, payload: dict, retries: int = 3) -> dict | None:
+    for attempt in range(retries):
+        response = requests.post(f"{BASE_URL}{endpoint}", headers=HEADERS, json=payload)
+        if response.status_code in [200, 201]:
+            return response.json()
+        if attempt < retries - 1:
+            time.sleep(1)
+        else:
+            st.error(f"POST ERROR {response.status_code}: {response.text}")
+    return None
 
 
 # ----------------------------
@@ -47,8 +57,8 @@ def extract_page_id(url: str) -> str | None:
     return match.group(1) if match else None
 
 
-def get_project(page_id: str) -> dict:
-    return notion_get(page_id)
+def get_project(page_id: str) -> dict | None:
+    return notion_get(f"/pages/{page_id}")
 
 
 def get_work_points_by_type(project: dict) -> dict:
@@ -61,9 +71,8 @@ def get_work_points_by_type(project: dict) -> dict:
 
 
 def template_exists(project_id: str, work_point: str, check_type: str) -> bool:
-    data = notion_query(
-        data_source_id=MONDAY_CHECK_DB_ID,
-        filter={
+    payload = {
+        "filter": {
             "and": [
                 {"property": "Name", "title": {"equals": work_point}},
                 {"property": "Project", "relation": {"contains": project_id}},
@@ -71,7 +80,8 @@ def template_exists(project_id: str, work_point: str, check_type: str) -> bool:
                 {"property": "Is Template", "checkbox": {"equals": True}},
             ]
         }
-    )
+    }
+    data = notion_post(f"/databases/{MONDAY_CHECK_DB_ID}/query", payload)
     return len(data.get("results", [])) > 0 if data else False
 
 
@@ -79,7 +89,7 @@ def create_template(project_id: str, work_point: str, check_type: str, employee_
     if template_exists(project_id, work_point, check_type):
         return "skipped"
 
-    notion_create({
+    notion_post("/pages", {
         "parent": {"database_id": MONDAY_CHECK_DB_ID},
         "properties": {
             "Name": {"title": [{"text": {"content": work_point}}]},
@@ -114,15 +124,15 @@ def get_date(mode: str) -> str:
 
 
 def get_templates(check_type: str) -> list[dict]:
-    data = notion_query(
-        data_source_id=MONDAY_CHECK_DB_ID,
-        filter={
+    payload = {
+        "filter": {
             "and": [
                 {"property": "Is Template", "checkbox": {"equals": True}},
                 {"property": "Check Type", "select": {"equals": check_type}},
             ]
         }
-    )
+    }
+    data = notion_post(f"/databases/{MONDAY_CHECK_DB_ID}/query", payload)
     return data.get("results", []) if data else []
 
 
@@ -131,9 +141,8 @@ def entry_exists(template: dict, date: str, check_type: str) -> bool:
     name = "".join([t["plain_text"] for t in props["Name"]["title"]])
     project = props["Project"]["relation"]
 
-    data = notion_query(
-        data_source_id=MONDAY_CHECK_DB_ID,
-        filter={
+    payload = {
+        "filter": {
             "and": [
                 {"property": "Name", "title": {"equals": name}},
                 {"property": "Date", "date": {"equals": date}},
@@ -145,7 +154,8 @@ def entry_exists(template: dict, date: str, check_type: str) -> bool:
                 {"property": "Is Template", "checkbox": {"equals": False}},
             ]
         }
-    )
+    }
+    data = notion_post(f"/databases/{MONDAY_CHECK_DB_ID}/query", payload)
     return len(data.get("results", [])) > 0 if data else False
 
 
@@ -156,7 +166,7 @@ def create_entry(template: dict, date: str, check_type: str) -> str:
     if entry_exists(template, date, check_type):
         return "skipped"
 
-    notion_create({
+    notion_post("/pages", {
         "parent": {"database_id": MONDAY_CHECK_DB_ID},
         "properties": {
             "Name": {"title": [{"text": {"content": name}}]},
