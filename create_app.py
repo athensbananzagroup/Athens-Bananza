@@ -14,28 +14,27 @@ if not NOTION_TOKEN:
 client = Client(auth=NOTION_TOKEN)
 
 MONDAY_CHECK_DB_ID = "31bcc2a6c00c80958f52000bc92cde8c"
+PROJECTS_DB_ID = "30acc2a6c00c81179587000b85dd79c0"
 
 # ----------------------------
-# Helpers
+# Notion helpers
 # ----------------------------
 
-def notion_get(path: str) -> dict:
-    page_id = path.split("/pages/")[-1]
+def notion_get(page_id: str) -> dict:
     return client.pages.retrieve(page_id=page_id)
 
 
-def notion_post(path: str, payload: dict) -> dict:
-    if path == "/pages":
-        return client.pages.create(**payload)
-    elif "/query" in path:
-        db_id = path.split("/databases/")[-1].split("/query")[0]
-        return client.databases.query(
-            database_id=db_id,
-            filter=payload.get("filter"),
-            page_size=payload.get("page_size", 100),
-            start_cursor=payload.get("start_cursor"),
-        )
-    return {}
+def notion_query(data_source_id: str, filter: dict = None, page_size: int = 100, start_cursor: str = None) -> dict:
+    kwargs = dict(data_source_id=data_source_id, page_size=page_size)
+    if filter:
+        kwargs["filter"] = filter
+    if start_cursor:
+        kwargs["start_cursor"] = start_cursor
+    return client.data_sources.query(**kwargs)
+
+
+def notion_create(payload: dict) -> dict:
+    return client.pages.create(**payload)
 
 
 # ----------------------------
@@ -49,7 +48,7 @@ def extract_page_id(url: str) -> str | None:
 
 
 def get_project(page_id: str) -> dict:
-    return notion_get(f"/pages/{page_id}")
+    return notion_get(page_id)
 
 
 def get_work_points_by_type(project: dict) -> dict:
@@ -62,8 +61,9 @@ def get_work_points_by_type(project: dict) -> dict:
 
 
 def template_exists(project_id: str, work_point: str, check_type: str) -> bool:
-    payload = {
-        "filter": {
+    data = notion_query(
+        data_source_id=MONDAY_CHECK_DB_ID,
+        filter={
             "and": [
                 {"property": "Name", "title": {"equals": work_point}},
                 {"property": "Project", "relation": {"contains": project_id}},
@@ -71,16 +71,15 @@ def template_exists(project_id: str, work_point: str, check_type: str) -> bool:
                 {"property": "Is Template", "checkbox": {"equals": True}},
             ]
         }
-    }
-    data = notion_post(f"/databases/{MONDAY_CHECK_DB_ID}/query", payload)
+    )
     return len(data.get("results", [])) > 0 if data else False
 
 
 def create_template(project_id: str, work_point: str, check_type: str, employee_dashboards: list) -> str:
     if template_exists(project_id, work_point, check_type):
-        return f"skipped"
+        return "skipped"
 
-    payload = {
+    notion_create({
         "parent": {"database_id": MONDAY_CHECK_DB_ID},
         "properties": {
             "Name": {"title": [{"text": {"content": work_point}}]},
@@ -91,8 +90,7 @@ def create_template(project_id: str, work_point: str, check_type: str, employee_
             "Status": {"select": {"name": "None"}},
             "Reviewed": {"select": {"name": "Not Started"}},
         },
-    }
-    notion_post("/pages", payload)
+    })
     return "created"
 
 
@@ -116,15 +114,15 @@ def get_date(mode: str) -> str:
 
 
 def get_templates(check_type: str) -> list[dict]:
-    payload = {
-        "filter": {
+    data = notion_query(
+        data_source_id=MONDAY_CHECK_DB_ID,
+        filter={
             "and": [
                 {"property": "Is Template", "checkbox": {"equals": True}},
                 {"property": "Check Type", "select": {"equals": check_type}},
             ]
         }
-    }
-    data = notion_post(f"/databases/{MONDAY_CHECK_DB_ID}/query", payload)
+    )
     return data.get("results", []) if data else []
 
 
@@ -133,8 +131,9 @@ def entry_exists(template: dict, date: str, check_type: str) -> bool:
     name = "".join([t["plain_text"] for t in props["Name"]["title"]])
     project = props["Project"]["relation"]
 
-    payload = {
-        "filter": {
+    data = notion_query(
+        data_source_id=MONDAY_CHECK_DB_ID,
+        filter={
             "and": [
                 {"property": "Name", "title": {"equals": name}},
                 {"property": "Date", "date": {"equals": date}},
@@ -146,8 +145,7 @@ def entry_exists(template: dict, date: str, check_type: str) -> bool:
                 {"property": "Is Template", "checkbox": {"equals": False}},
             ]
         }
-    }
-    data = notion_post(f"/databases/{MONDAY_CHECK_DB_ID}/query", payload)
+    )
     return len(data.get("results", [])) > 0 if data else False
 
 
@@ -156,9 +154,9 @@ def create_entry(template: dict, date: str, check_type: str) -> str:
     name = "".join([t["plain_text"] for t in props["Name"]["title"]])
 
     if entry_exists(template, date, check_type):
-        return f"skipped"
+        return "skipped"
 
-    payload = {
+    notion_create({
         "parent": {"database_id": MONDAY_CHECK_DB_ID},
         "properties": {
             "Name": {"title": [{"text": {"content": name}}]},
@@ -170,8 +168,7 @@ def create_entry(template: dict, date: str, check_type: str) -> str:
             "Status": props["Status"],
             "Reviewed": props["Reviewed"],
         },
-    }
-    notion_post("/pages", payload)
+    })
     return "created"
 
 
