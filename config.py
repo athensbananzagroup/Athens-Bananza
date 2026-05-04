@@ -5,7 +5,10 @@
 # if the database ID is the last 32 characters following [database]-copy- in the URL, that is the page database
 # that will not work properly. Make sure you are accessing the database ID, not the page ID
 
-NOTION_TOKEN = "NOTION_TOKEN_HERE"
+NOTION_TOKEN = st.secrets.get("NOTION_TOKEN") or os.getenv("NOTION_TOKEN")
+if not NOTION_TOKEN:
+    st.error("NOTION_TOKEN is missing. Add it in Streamlit Cloud secrets.")
+    st.stop()
 
 MONDAY_CHECK_DB_ID = "31bcc2a6c00c80d49256cf371e364a26"
 PROJECT_DB_ID = "30acc2a6c00c817291bfd97875cad3e9"
