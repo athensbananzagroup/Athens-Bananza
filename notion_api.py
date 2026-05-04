@@ -5,18 +5,26 @@ from config import BASE_URL, HEADERS
 
 # NOTION HELPERS [UTILIZING REQUESTS LIBRARY]
 
-def notion_post(path: str, payload: dict) -> dict:
-    if path == "/pages":
-        return client.pages.create(**payload)
-    elif "/query" in path:
-        db_id = path.split("/databases/")[-1].split("/query")[0]
-        return client.databases.query(
-            database_id=db_id,
-            filter=payload.get("filter"),
-            page_size=payload.get("page_size", 100),
-            start_cursor=payload.get("start_cursor"),
+def notion_post(endpoint, payload, retries=3):
+    for attempt in range(retries):
+        response = requests.post(
+            f"{BASE_URL}{endpoint}",
+            headers=HEADERS,
+            json=payload,
         )
-    return {}
+
+        if response.status_code in [200, 201]:
+            return response.json()
+
+        print("POST ERROR:", response.status_code)
+        print(response.text)
+
+        if attempt < retries - 1:
+            print(f"Retrying... Attempt {attempt + 1}/{retries}")
+            time.sleep(1)
+
+    print("FAILED FINAL: Request could not be completed.")
+    return None
 
 
 def notion_patch(endpoint, payload):
