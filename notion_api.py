@@ -10,11 +10,12 @@ def notion_post(path: str, payload: dict) -> dict:
         return client.pages.create(**payload)
     elif "/query" in path:
         db_id = path.split("/databases/")[-1].split("/query")[0]
-        filter_val = payload.pop("filter", None)
-        kwargs = {**payload}
-        if filter_val is not None:
-            kwargs["filter"] = filter_val
-        return client.databases.query(database_id=db_id, **kwargs)
+        return client.databases.query(
+            database_id=db_id,
+            filter=payload.get("filter"),
+            page_size=payload.get("page_size", 100),
+            start_cursor=payload.get("start_cursor"),
+        )
     return {}
 
 
