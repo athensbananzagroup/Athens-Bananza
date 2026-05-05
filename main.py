@@ -10,7 +10,7 @@ from parser import (
     load_indiv_csv,
     load_tues_csv
 )
-from notion_client import (
+from notion_api import (
     notion_patch
 )
 from relation_lookup import (
