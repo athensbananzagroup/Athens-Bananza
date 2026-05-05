@@ -4,7 +4,7 @@ from normalizer import (
     normalize_status,
     normalize_reviewed,
 )
-from notion_client import notion_post, notion_patch
+from notion_api import notion_post, notion_patch
 
 # PAGE PAYLOAD BUILDER AND UPDATER
 
