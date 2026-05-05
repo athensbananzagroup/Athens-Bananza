@@ -208,8 +208,6 @@ def main():
     project_lookup = fetch_relation_lookup(PROJECT_DB_ID, "Name")
     employee_lookup = fetch_relation_lookup(EMPLOYEE_DB_ID, "Name")
 
-    from notion_client import notion_patch
-
     print("Starting job execution...")
 
     for job in jobs:
