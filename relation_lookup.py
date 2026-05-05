@@ -1,4 +1,4 @@
-from notion_api import notion_post
+from notion_api import (notion_post, notion_patch)
 
 # DATABASE LOOKUPS
 
@@ -61,8 +61,6 @@ def fetch_ready_imports(migration_db_id):
 # Editing the Status data inside Migration
 
 def mark_import_running(page_id):
-
-    from notion_client import notion_patch
 
     payload = {
         "properties": {
