@@ -8,10 +8,20 @@ import os
 # if the database ID is the last 32 characters following [database]-copy- in the URL, that is the page database
 # that will not work properly. Make sure you are accessing the database ID, not the page ID
 
-NOTION_TOKEN = st.secrets.get("NOTION_TOKEN") or os.getenv("NOTION_TOKEN")
+def get_notion_token():
+    try:
+        import streamlit as st
+        token = st.secrets.get("NOTION_TOKEN")
+    except:
+        token = None
+
+# returns us the secret streamlit file or a .env file to get the NOTION API code
+    return token or os.getenv("NOTION_TOKEN")
+
+NOTION_TOKEN = get_notion_token()
+
 if not NOTION_TOKEN:
-    st.error("NOTION_TOKEN is missing. Add it in Streamlit Cloud secrets.")
-    st.stop()
+    raise ValueError("NOTION_TOKEN is missing")
 
 MONDAY_CHECK_DB_ID = "31bcc2a6c00c80d49256cf371e364a26"
 PROJECT_DB_ID = "30acc2a6c00c817291bfd97875cad3e9"
