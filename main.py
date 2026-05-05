@@ -197,7 +197,6 @@ def mark_import_failed(page_id, notion_patch_fn, error_message):
 # streamlit UI code
 
 def run_pipeline():
-    def run_pipeline():
     success = 0
     skipped = 0
     failed = 0
