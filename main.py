@@ -194,6 +194,11 @@ def mark_import_failed(page_id, notion_patch_fn, error_message):
     except Exception as e:
         print(f"CRITICAL: Could not update failure state -> {e}")
 
+# streamlit UI code
+
+def run_pipeline():
+    return success, skipped, failed
+
 # MAIN
 
 def main():
@@ -223,3 +228,23 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# streamlit UI code
+
+st.set_page_config(page_title="Notion Migrater")
+
+st.title("Notion Migrater")
+st.write("Run migration jobs from Notion into your database.")
+
+if st.button("Run Import"):
+    with st.spinner("Running import..."):
+
+        success, skipped, failed = run_pipeline()
+
+    st.success("Import Complete!")
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Success", success)
+    col2.metric("Skipped", skipped)
+    col3.metric("Failed", failed)
