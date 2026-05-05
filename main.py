@@ -32,8 +32,7 @@ import streamlit as st
 
 # importing the linked Google Sheets and turning it into a .csv
 
-def run_import_job( job, project_lookup, employee_lookup, notion_patch_fn
-):
+def run_import_job(job, project_lookup, employee_lookup, notion_patch_fn):
 
     page_id = job["page_id"]
     import_type = job["import_type"]
@@ -47,104 +46,67 @@ def run_import_job( job, project_lookup, employee_lookup, notion_patch_fn
     error_log = []
 
     try:
-        # STEP 1: Export sheet → CSV
-        print("Downloading Google Sheet...")
+        # STEP 1: Download CSV
         csv_text = export_google_sheet_as_csv(sheet_url)
-
         csv_path = save_csv_temp(csv_text, f"{page_id}.csv")
 
         # STEP 2: Parse CSV
-        print("Parsing CSV...")
-
         if import_type == "group":
             rows = load_csv_rows(csv_path)
-
         elif import_type == "ind":
             rows = load_indiv_csv(csv_path)
-
         elif import_type == "tues":
             rows = load_tues_csv(csv_path)
-
         else:
             raise Exception(f"Unknown import type: {import_type}")
 
         print(f"Loaded {len(rows)} rows.")
 
-        # STEP 3: Process rows (NOW WITH FULL LOGGING)
+        # STEP 3: Process rows (USE process_row)
         for i, row in enumerate(rows, start=1):
-            try:
-                print(f"\nProcessing Row {i}...")
 
-                _, props = build_properties(
-                    row,
-                    project_lookup,
-                    employee_lookup
-                )
+            status, result = process_row(
+                row,
+                project_lookup,
+                employee_lookup
+            )
 
-                if not props:
-                    skipped += 1
-                    print(f"[{i}] SKIPPED -> No properties built")
-                    continue
-
-                create_page(props)
-
+            if status == "SUCCESS":
                 success += 1
-                print(f"[{i}] SUCCESS -> {row.get('Monday Check Name', 'Unknown')}")
-
-            except Exception as e:
+            elif status == "SKIPPED":
+                skipped += 1
+            else:
                 failed += 1
-
-                print(f"[{i}] FAILED -> {str(e)}")
-
                 error_log.append({
                     "row_number": i,
                     "title": row.get("Monday Check Name", ""),
-                    "error": str(e)
+                    "error": result
                 })
 
-        # STEP 4: Write error log (same as old main)
+        # STEP 4: Write error log
         if error_log:
             with open("logs/errors.csv", "w", newline="", encoding="utf-8") as file:
-                writer = csv.DictWriter(
-                    file,
-                    fieldnames=["row_number", "title", "error"]
-                )
+                writer = csv.DictWriter(file, fieldnames=["row_number", "title", "error"])
                 writer.writeheader()
                 writer.writerows(error_log)
 
-            print("\nError log written to logs/errors.csv")
-
+        # STEP 5: Mark complete
         notion_patch_fn(f"/pages/{page_id}", {
             "properties": {
-                "Import Status": {
-                    "status": {
-                        "name": "Complete"
-                    }
-                },
-                "Last Error": {
-                    "rich_text": []
-                }
+                "Import Status": {"status": {"name": "Complete"}},
+                "Last Error": {"rich_text": []}
             }
         })
 
-        print("\nJOB COMPLETE")
-
-        print("\n=====================================")
-        print(f"Success: {success}")
-        print(f"Skipped: {skipped}")
-        print(f"Failed:  {failed}")
-        print("=====================================")
-
+        print(f"JOB COMPLETE → Success: {success}, Skipped: {skipped}, Failed: {failed}")
 
     except Exception as e:
-
         print(f"JOB FAILED: {str(e)}")
+        mark_import_failed(page_id, notion_patch_fn, e)
+        failed += 1
 
-        mark_import_failed(
-            page_id,
-            notion_patch_fn,
-            e
-        )
+    # ✅ CRITICAL: return counts
+    return success, skipped, failed
 
 # processing individual rows
 
@@ -201,49 +163,65 @@ def run_pipeline():
     skipped = 0
     failed = 0
 
-    jobs = fetch_ready_imports(...)
+    jobs = fetch_ready_imports(MIGRATION_DB_ID)
 
     if not jobs:
+        print("No jobs found")
         return success, skipped, failed
+
+    project_lookup = fetch_relation_lookup(PROJECT_DB_ID, "Name")
+    employee_lookup = fetch_relation_lookup(EMPLOYEE_DB_ID, "Name")
 
     for job in jobs:
         try:
-            # do work
-            success += 1
-        except:
+            mark_import_running(job["page_id"])
+
+            job_success, job_skipped, job_failed = run_import_job(
+                job,
+                project_lookup,
+                employee_lookup,
+                notion_patch
+            )
+
+            success += job_success
+            skipped += job_skipped
+            failed += job_failed
+
+        except Exception as e:
+            print(f"JOB CRASHED: {str(e)}")
             failed += 1
 
     return success, skipped, failed
 
 # MAIN
 
-def main():
-    jobs = fetch_ready_imports(MIGRATION_DB_ID)
+# def main():
+#     jobs = fetch_ready_imports(MIGRATION_DB_ID)
 
-    if not jobs:
-        print("No jobs found")
-        return
+#     if not jobs:
+#         print("No jobs found")
+#         return
 
-    print("Loading relation lookups...")
+#     print("Loading relation lookups...")
 
-    project_lookup = fetch_relation_lookup(PROJECT_DB_ID, "Name")
-    employee_lookup = fetch_relation_lookup(EMPLOYEE_DB_ID, "Name")
+#     project_lookup = fetch_relation_lookup(PROJECT_DB_ID, "Name")
+#     employee_lookup = fetch_relation_lookup(EMPLOYEE_DB_ID, "Name")
 
-    print("Starting job execution...")
+#     print("Starting job execution...")
 
-    for job in jobs:
-        mark_import_running(job["page_id"])
+#     for job in jobs:
+#         mark_import_running(job["page_id"])
 
-        run_import_job(
-            job,
-            project_lookup,
-            employee_lookup,
-            notion_patch
-        )
+#         run_import_job(
+#             job,
+#             project_lookup,
+#             employee_lookup,
+#             notion_patch
+#         )
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
 
 # streamlit UI code
 
