@@ -197,6 +197,23 @@ def mark_import_failed(page_id, notion_patch_fn, error_message):
 # streamlit UI code
 
 def run_pipeline():
+    def run_pipeline():
+    success = 0
+    skipped = 0
+    failed = 0
+
+    jobs = fetch_ready_imports(...)
+
+    if not jobs:
+        return success, skipped, failed
+
+    for job in jobs:
+        try:
+            # do work
+            success += 1
+        except:
+            failed += 1
+
     return success, skipped, failed
 
 # MAIN
