@@ -1,3 +1,6 @@
+import streamlit as st
+import os
+
 # CONFIG
 
 # notion token ID should be the API key for the workspace
