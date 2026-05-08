@@ -1,0 +1,41 @@
+name: Weekly Streamlit Automation
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"  # Every Monday at 9:00 AM UTC
+  workflow_dispatch:       # Allows manual trigger from GitHub Actions UI
+
+jobs:
+  run-and-ping:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run automation script
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          # Add any other secrets your script needs, e.g.:
+          # NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+        run: |
+          python create_app.py
+
+      - name: Ping Streamlit app to keep it alive
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.STREAMLIT_APP_URL }}")
+          echo "Streamlit app responded with HTTP $STATUS"
+          if [ "$STATUS" -ne 200 ]; then
+            echo "Warning: App may be sleeping or unreachable (HTTP $STATUS)"
+          else
+            echo "App is live and responding."
+          fi
