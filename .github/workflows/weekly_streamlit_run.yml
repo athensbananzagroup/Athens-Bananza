@@ -24,7 +24,7 @@ jobs:
 
       - name: Run automation script
         env:
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           # Add any other secrets your script needs, e.g.:
           # NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
         run: |
