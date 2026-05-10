@@ -26,7 +26,7 @@ jobs:
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
         run: |
-          python app.py
+          python automate.py
       
       - name: Ping Streamlit app to keep it alive
         run: |
