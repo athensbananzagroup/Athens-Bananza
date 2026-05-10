@@ -25,11 +25,9 @@ jobs:
       - name: Run automation script
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          # Add any other secrets your script needs, e.g.:
-          # NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
         run: |
-          python create_app.py
-
+          python app.py
+      
       - name: Ping Streamlit app to keep it alive
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.STREAMLIT_APP_URL }}")
