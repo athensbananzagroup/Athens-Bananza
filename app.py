@@ -45,7 +45,7 @@ from sheet_exporter import (
 
 st.set_page_config(page_title="Notion Tools")
 
-NOTION_TOKEN = st.secrets.get("NOTION_TOKEN") or os.getenv("NOTION_TOKEN")
+NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 
 if not NOTION_TOKEN:
     st.error("NOTION_TOKEN is missing. Add it in Streamlit Cloud secrets or your local environment.")
