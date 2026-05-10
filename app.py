@@ -321,7 +321,7 @@ def get_date(mode: str) -> str:
     if mode == "monday":
         d = today - timedelta(days=today.weekday())
     elif mode == "tuesday":
-        d = today + timedelta((1 - today.weekday()) % 7)
+        d = today - timedelta(days=(today.weekday() - 1) % 7)
     elif mode == "start":
         d = today.replace(day=1)
     else:
