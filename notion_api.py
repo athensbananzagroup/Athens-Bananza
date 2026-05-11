@@ -40,3 +40,53 @@ def notion_patch(endpoint, payload):
         return None
 
     return response.json()
+
+def fetch_migrated_pages(database_id):
+
+    payload = {
+        "filter": {
+            "property": "Migrated",
+            "checkbox": {
+                "equals": True
+            }
+        },
+        "page_size": 100
+    }
+
+    results = notion_post(
+        f"/databases/{database_id}/query",
+        payload
+    )
+
+    if not results:
+        return []
+
+    return results.get("results", [])
+
+def delete_page(page_id):
+
+    payload = {
+        "archived": True
+    }
+
+    return notion_patch(
+        f"/pages/{page_id}",
+        payload
+    )
+
+def uncheck_migrated(page_id):
+
+    payload = {
+        "properties": {
+            "Migrated": {
+                "checkbox": False
+            }
+        }
+    }
+
+    return notion_patch(
+        f"/pages/{page_id}",
+        payload
+    )
+
+    return response.json()
