@@ -11,7 +11,8 @@ from notion_client import Client
 from config import (
     PROJECT_DB_ID,
     EMPLOYEE_DB_ID,
-    MIGRATION_DB_ID
+    MIGRATION_DB_ID,
+    MONDAY_CHECK_DB_ID
 )
 
 from parser import (
@@ -111,76 +112,31 @@ def mark_import_failed(page_id, notion_patch_fn, error_message):
         print(f"CRITICAL: Could not update failure state -> {e}")
 
 
-def run_import_job(job, project_lookup, employee_lookup, notion_patch_fn):
-    page_id = job["page_id"]
-    import_type = job["import_type"]
-    sheet_url = job["google_sheets_link"]
+def confirm_migration():
 
-    print(f"\n=== STARTING JOB: {page_id} ({import_type}) ===")
+    pages = fetch_migrated_pages(MONDAY_CHECK_DB_ID)
 
-    success = 0
-    failed = 0
-    skipped = 0
-    error_log = []
+    confirmed = 0
 
-    try:
-        csv_text = export_google_sheet_as_csv(sheet_url)
-        csv_path = save_csv_temp(csv_text, f"{page_id}.csv")
+    for page in pages:
+        uncheck_migrated(page["id"])
+        confirmed += 1
 
-        if import_type == "group":
-            rows = load_csv_rows(csv_path)
-        elif import_type == "ind":
-            rows = load_indiv_csv(csv_path)
-        elif import_type == "tues":
-            rows = load_tues_csv(csv_path)
-        else:
-            raise Exception(f"Unknown import type: {import_type}")
+    return confirmed
 
-        print(f"Loaded {len(rows)} rows.")
+def undo_migration():
 
-        for i, row in enumerate(rows, start=1):
-            status, result = process_row(
-                row,
-                project_lookup,
-                employee_lookup
-            )
+    pages = fetch_migrated_pages(MONDAY_CHECK_DB_ID)
 
-            if status == "SUCCESS":
-                success += 1
-            elif status == "SKIPPED":
-                skipped += 1
-            else:
-                failed += 1
-                error_log.append({
-                    "row_number": i,
-                    "title": row.get("Monday Check Name", ""),
-                    "error": result
-                })
+    deleted = 0
 
-        if error_log:
-            os.makedirs("logs", exist_ok=True)
+    for page in pages:
+        delete_page(page["id"])
+        deleted += 1
 
-            with open("logs/errors.csv", "w", newline="", encoding="utf-8") as file:
-                writer = csv.DictWriter(file, fieldnames=["row_number", "title", "error"])
-                writer.writeheader()
-                writer.writerows(error_log)
+    return deleted
 
-        notion_patch_fn(f"/pages/{page_id}", {
-            "properties": {
-                "Import Status": {"status": {"name": "Complete"}},
-                "Last Error": {"rich_text": []}
-            }
-        })
-
-        print(f"JOB COMPLETE → Success: {success}, Skipped: {skipped}, Failed: {failed}")
-
-    except Exception as e:
-        print(f"JOB FAILED: {str(e)}")
-        mark_import_failed(page_id, notion_patch_fn, e)
-        failed += 1
-
-    return success, skipped, failed
-
+# streamlit UI code
 
 def run_pipeline():
     success = 0
@@ -487,20 +443,42 @@ tab_import, tab_setup, tab_run, tab_delete = st.tabs([
 ])
 
 
-with tab_import:
-    st.header("Notion Migrater")
-    st.write("Run migration jobs from Notion into your database.")
+st.set_page_config(page_title="Notion Migrater")
 
-    if st.button("Run Import"):
-        with st.spinner("Running import..."):
-            success, skipped, failed = run_pipeline()
+st.title("Notion Migrater")
+st.write("Run migration jobs from Notion into your database.")
 
-        st.success("Import Complete!")
+if st.button("Run Import"):
+    with st.spinner("Running import..."):
 
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Success", success)
-        col2.metric("Skipped", skipped)
-        col3.metric("Failed", failed)
+        success, skipped, failed = run_pipeline()
+
+    st.success("Import Complete!")
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Success", success)
+    col2.metric("Skipped", skipped)
+    col3.metric("Failed", failed)
+    st.divider()
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        if st.button("Undo Migration"):
+            with st.spinner("Deleting migrated pages..."):
+                deleted_count = undo_migration()
+
+            st.warning(f"Deleted {deleted_count} migrated pages.")
+
+    with col2:
+
+        if st.button("Confirm Migration"):
+            with st.spinner("Confirming migration..."):
+                confirmed_count = confirm_migration()
+
+            st.success(f"Confirmed {confirmed_count} migrated pages.")
 
 
 with tab_setup:
