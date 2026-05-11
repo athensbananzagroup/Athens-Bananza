@@ -3,7 +3,8 @@ import csv
 from config import (
     PROJECT_DB_ID,
     EMPLOYEE_DB_ID,
-    MIGRATION_DB_ID
+    MIGRATION_DB_ID,
+    MONDAY_CHECK_DB_ID
 )
 from parser import (
     load_csv_rows,
@@ -11,7 +12,10 @@ from parser import (
     load_tues_csv
 )
 from notion_api import (
-    notion_patch
+    notion_patch,
+    fetch_migrated_pages,
+    delete_page,
+    uncheck_migrated
 )
 from relation_lookup import (
     fetch_relation_lookup,
@@ -156,6 +160,30 @@ def mark_import_failed(page_id, notion_patch_fn, error_message):
     except Exception as e:
         print(f"CRITICAL: Could not update failure state -> {e}")
 
+def confirm_migration():
+
+    pages = fetch_migrated_pages(MONDAY_CHECK_DB_ID)
+
+    confirmed = 0
+
+    for page in pages:
+        uncheck_migrated(page["id"])
+        confirmed += 1
+
+    return confirmed
+
+def undo_migration():
+
+    pages = fetch_migrated_pages(MONDAY_CHECK_DB_ID)
+
+    deleted = 0
+
+    for page in pages:
+        delete_page(page["id"])
+        deleted += 1
+
+    return deleted
+
 # streamlit UI code
 
 def run_pipeline():
@@ -242,3 +270,22 @@ if st.button("Run Import"):
     col1.metric("Success", success)
     col2.metric("Skipped", skipped)
     col3.metric("Failed", failed)
+    st.divider()
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        if st.button("Undo Migration"):
+            with st.spinner("Deleting migrated pages..."):
+                deleted_count = undo_migration()
+
+            st.warning(f"Deleted {deleted_count} migrated pages.")
+
+    with col2:
+
+        if st.button("Confirm Migration"):
+            with st.spinner("Confirming migration..."):
+                confirmed_count = confirm_migration()
+
+            st.success(f"Confirmed {confirmed_count} migrated pages.")
