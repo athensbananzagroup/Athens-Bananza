@@ -1,4 +1,5 @@
 import csv
+import unicodedata
 import os
 import re
 import time
@@ -414,18 +415,55 @@ def get_title_property_as_string(page: dict, prop_name: str) -> str:
     return "".join(t.get("plain_text", "") for t in prop["title"]) or "(Untitled)"
 
 
-def get_project_page_id(project_name: str) -> str | None:
-    query = client.data_sources.query(
-        data_source_id=PROJECTS_DATA_SOURCE_ID,
-        page_size=1,
-        filter={
-            "property": TITLE_PROPERTY_NAME,
-            "title": {"equals": project_name},
-        },
-    )
+def normalize_text(value: str) -> str:
+    value = unicodedata.normalize("NFKC", value)
+    value = value.replace("’", "'").replace("‘", "'")
+    value = value.replace("“", '"').replace("”", '"')
+    value = value.replace("–", "-").replace("—", "-")
+    value = " ".join(value.split())
+    return value.casefold()
 
-    results = query["results"]
-    return results[0]["id"] if results else None
+
+def strip_accents(value: str) -> str:
+    value = unicodedata.normalize("NFD", value)
+    return "".join(ch for ch in value if unicodedata.category(ch) != "Mn")
+
+
+def get_project_title(page: dict) -> str:
+    return get_title_property_as_string(page, TITLE_PROPERTY_NAME)
+
+
+def find_project_matches(project_name: str) -> list[dict]:
+    target = normalize_text(project_name)
+    target_no_accents = strip_accents(target)
+
+    matches = []
+    start_cursor = None
+
+    while True:
+        query = client.data_sources.query(
+            data_source_id=PROJECTS_DATA_SOURCE_ID,
+            page_size=100,
+            start_cursor=start_cursor,
+        )
+
+        for page in query["results"]:
+            title = get_project_title(page)
+            normalized_title = normalize_text(title)
+            normalized_title_no_accents = strip_accents(normalized_title)
+
+            if (
+                normalized_title == target
+                or normalized_title_no_accents == target_no_accents
+            ):
+                matches.append(page)
+
+        if not query.get("has_more"):
+            break
+
+        start_cursor = query.get("next_cursor")
+
+    return matches
 
 
 def query_template_rows_for_project(project_page_id: str) -> list[dict]:
@@ -629,26 +667,61 @@ with tab_run:
 with tab_delete:
     st.header("Notion Template Cleaner")
 
-    project_name = st.text_input("Project name")
+    project_name = st.text_input("Project name", key="delete_project_name")
 
     if st.button("Find templates"):
         if not project_name.strip():
             st.warning("Enter a project name first.")
         else:
-            project_page_id = get_project_page_id(project_name.strip())
+            matches = find_project_matches(project_name.strip())
 
-            if not project_page_id:
-                st.error(f'No project found named "{project_name}".')
+            if not matches:
+                st.error(f'No project found matching "{project_name}".')
+            elif len(matches) > 1:
+                st.warning("Multiple matching projects found. Choose the correct one.")
+
+                options = {
+                    f"{get_project_title(page)} — {page['id']}": page["id"]
+                    for page in matches
+                }
+
+                choice = st.selectbox(
+                    "Matching projects",
+                    list(options.keys()),
+                    key="delete_project_match_choice"
+                )
+
+                st.session_state["delete_project_page_id"] = options[choice]
+                st.session_state["delete_project_name"] = choice
+                st.info("Click 'Find templates' again after selecting the correct project.")
             else:
+                project_page_id = matches[0]["id"]
+                clean_project_name = get_project_title(matches[0])
+
                 rows = query_template_rows_for_project(project_page_id)
 
                 st.session_state["template_rows"] = rows
-                st.session_state["project_name"] = project_name.strip()
+                st.session_state["project_name"] = clean_project_name
 
-                st.success(f'Found {len(rows)} template row(s) for "{project_name}".')
+                st.success(f'Found {len(rows)} template row(s) for "{clean_project_name}".')
 
                 for row in rows:
                     st.write("-", get_title_property_as_string(row, TITLE_PROPERTY_NAME))
+
+    if st.button("Trash templates"):
+        rows = st.session_state.get("template_rows", [])
+        saved_project_name = st.session_state.get("project_name", project_name.strip())
+
+        if not rows:
+            st.warning("No template rows loaded. Click 'Find templates' first.")
+        else:
+            st.warning("This will move the checked template rows to trash.")
+
+            trashed_count = trash_rows(rows)
+
+            st.success(f'Trashed {trashed_count} template row(s) for "{saved_project_name}".')
+
+            st.session_state["template_rows"] = []
 
     if st.button("Trash templates"):
         rows = st.session_state.get("template_rows", [])
