@@ -2,6 +2,7 @@ import csv
 import os
 import re
 import time
+import unicodedata
 from datetime import datetime, timedelta
 
 import requests
@@ -406,26 +407,79 @@ IS_TEMPLATE_PROPERTY_NAME = "Is Template"
 
 
 def get_title_property_as_string(page: dict, prop_name: str) -> str:
-    prop = page["properties"].get(prop_name)
+    prop = page.get("properties", {}).get(prop_name)
 
-    if not prop or prop["type"] != "title":
+    if not prop or prop.get("type") != "title":
         return "(Untitled)"
 
     return "".join(t.get("plain_text", "") for t in prop["title"]) or "(Untitled)"
 
 
+def normalize_project_name(project_name: str) -> str:
+    quote_variants = str.maketrans({
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201a": "'",
+        "\u201b": "'",
+        "\u2032": "'",
+        "\u00b4": "'",
+        "`": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u201e": '"',
+        "\u2033": '"',
+    })
+    normalized = unicodedata.normalize("NFKC", project_name).translate(quote_variants)
+
+    return " ".join(normalized.split()).casefold()
+
+
+def query_project_pages() -> list[dict]:
+    pages = []
+    start_cursor = None
+
+    while True:
+        query = client.data_sources.query(
+            data_source_id=PROJECTS_DATA_SOURCE_ID,
+            page_size=100,
+            start_cursor=start_cursor,
+        )
+
+        pages.extend(query["results"])
+
+        if not query.get("has_more"):
+            break
+
+        start_cursor = query.get("next_cursor")
+
+    return pages
+
+
 def get_project_page_id(project_name: str) -> str | None:
+    clean_project_name = " ".join(project_name.split())
+
     query = client.data_sources.query(
         data_source_id=PROJECTS_DATA_SOURCE_ID,
         page_size=1,
         filter={
             "property": TITLE_PROPERTY_NAME,
-            "title": {"equals": project_name},
+            "title": {"equals": clean_project_name},
         },
     )
 
     results = query["results"]
-    return results[0]["id"] if results else None
+    if results:
+        return results[0]["id"]
+
+    normalized_project_name = normalize_project_name(clean_project_name)
+
+    for page in query_project_pages():
+        page_title = get_title_property_as_string(page, TITLE_PROPERTY_NAME)
+
+        if normalize_project_name(page_title) == normalized_project_name:
+            return page["id"]
+
+    return None
 
 
 def query_template_rows_for_project(project_page_id: str) -> list[dict]:
