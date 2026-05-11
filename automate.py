@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 MONDAY_CHECK_DB_ID = "31bcc2a6c00c80d49256cf371e364a26"
 
+
 BASE_URL = "https://api.notion.com/v1"
 HEADERS = {
     "Authorization": f"Bearer {NOTION_TOKEN}",
